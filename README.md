@@ -3,3 +3,9 @@ This repository contains an executable who's sole purpose is to log you in to yo
 
 ## Installation and Usage
 Compiled binaries are available in the [release](https://github.com/r-darwish/cibus/releases) page, so just download and execute without any arguments. The only requirement is that you have Chrome installed on your computer.
+
+### Note for macOS users
+In order to use the precomiled binary you need to run this command once you downloaded it:
+```bash
+xattr -dr com.apple.quarantine cibus
+```
