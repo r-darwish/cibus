@@ -27,26 +27,30 @@ func main() {
 	}
 }
 
-func GetCredentials() (username, password string, err error) {
-	if len(os.Args) != 3 {
-		reader := bufio.NewReader(os.Stdin)
+func GetCredentials() (string, string, error) {
+	username := os.Getenv("CIBUS_USERNAME")
+	password := os.Getenv("CIBUS_PASSWORD")
+	var err error
 
+	reader := bufio.NewReader(os.Stdin)
+
+	if username == "" {
 		fmt.Print("Enter Username: ")
-		username, err := reader.ReadString('\n')
+		username, err = reader.ReadString('\n')
 		if err != nil {
 			return "", "", err
 		}
+		username = strings.TrimSpace(username)
+	}
 
+	if password == "" {
 		fmt.Print("Enter Password: ")
 		bytePassword, err := term.ReadPassword(int(syscall.Stdin))
 		if err != nil {
 			return "", "", err
 		}
-
-		password := string(bytePassword)
-		return strings.TrimSpace(username), password, nil
-
-	} else {
-		return os.Args[1], os.Args[2], nil
+		password = string(bytePassword)
 	}
+
+	return username, password, nil
 }

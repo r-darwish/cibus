@@ -1,85 +1,111 @@
 package internal
 
 import (
-	"context"
 	"fmt"
-	"github.com/chromedp/cdproto/cdp"
-	"github.com/chromedp/cdproto/dom"
-	"github.com/chromedp/chromedp"
-	"log"
-	"time"
+	"os"
+
+	"github.com/imroc/req/v3"
+	"github.com/samber/lo"
 )
 
-func AddAllFriends(username, password string) error {
-	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.Flag("headless", false),
-	)
-
-	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
-	defer cancel()
-
-	ctx, cancel := chromedp.NewContext(allocCtx)
-	defer cancel()
-
-	err := chromedp.Run(ctx,
-		chromedp.Navigate("https://www.mysodexo.co.il"),
-		chromedp.SetValue("#txtUsr", username, chromedp.ByID),
-		chromedp.SetValue("#txtPas", password, chromedp.ByID),
-		chromedp.Click("#btnLogin"),
-		chromedp.WaitVisible("#ctl00_lnkRound1"),
-	)
-	if err != nil {
-		return fmt.Errorf("failed logging in to Cibus: %w", err)
+func login(username, password string) (*req.Client, error) {
+	var auth struct {
+		Company  string `json:"company"`
+		Username string `json:"username"`
+		Password string `json:"password"`
 	}
 
-	var friends []*cdp.Node
-	err = chromedp.Run(ctx,
-		chromedp.Navigate("https://www.mysodexo.co.il/new_my/new_my_friends.aspx"),
-		chromedp.ActionFunc(func(ctx context.Context) error {
-			for {
-				deadline, c := context.WithTimeout(ctx, time.Second)
-				err := chromedp.Nodes(`//div[contains(@class, "all-friends")]/div[contains(@class, "friends-panel")]/span`, &friends).Do(deadline)
-				c()
-				if err != nil {
-					return err
-				}
-				if len(friends) == 0 {
-					return nil
-				}
+	auth.Username = username
+	auth.Password = password
 
-				friend := friends[0]
+	client := req.C()
+	if _, ok := os.LookupEnv("CIBUS_DEV"); ok {
+		client.DevMode()
+	}
+	client.SetUserAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:123.0) Gecko/20100101 Firefox/123.0")
+	client.SetCommonHeaders(map[string]string{
+		"Application-Id": "E5D5FEF5-A05E-4C64-AEBA-BA0CECA0E402",
+	})
 
-				err = dom.RequestChildNodes(friend.NodeID).WithDepth(-1).Do(ctx)
-				if err != nil {
-					log.Printf("Error clicking a user: %s", err)
-					continue
-				}
-
-				time.Sleep(1 * time.Second)
-				if len(friend.Children) == 0 {
-					log.Printf("Unclickable node")
-					continue
-				}
-				log.Printf("Adding friend")
-
-				deadline, c = context.WithTimeout(ctx, time.Second)
-				err = chromedp.Click([]cdp.NodeID{friend.Children[1].NodeID}, chromedp.ByNodeID).Do(deadline)
-				c()
-				if err != nil {
-					log.Printf("Error clicking a user: %s", err)
-					continue
-				}
-
-				err = chromedp.WaitNotVisible(".ui-loader").Do(ctx)
-				if err != nil {
-					return err
-				}
-
-			}
-		}),
-	)
+	response, err := client.R().SetBody(&auth).Post("https://api.capir.pluxee.co.il/auth/authToken")
 	if err != nil {
-		return fmt.Errorf("could not get friends: %w", err)
+		return nil, fmt.Errorf("Failed logging in: %w", err)
+	}
+
+	if response.IsErrorState() {
+		return nil, fmt.Errorf("HTTP Error: %d", response.StatusCode)
+	}
+
+	return client, nil
+}
+
+func getFriends(client *req.Client, query string) error {
+	var request struct {
+		Query string `json:"query"`
+		Type  string `json:"type"`
+	}
+
+	type User struct {
+		UserId int `json:"user_id"`
+	}
+
+	var data struct {
+		List []User `json:"list"`
+	}
+
+	request.Query = query
+	request.Type = "autocomp_friend"
+	response, err := client.R().SetBody(&request).SetSuccessResult(&data).Post("https://api.consumers.pluxee.co.il/api/main.py")
+	if err != nil {
+		return nil
+	}
+
+	if response.IsErrorState() {
+		return nil
+	}
+
+	userIds := lo.Map(data.List, func(item User, _ int) int {
+		return item.UserId
+	})
+	if len(userIds) == 0 {
+		return nil
+	}
+
+	var addFriendRequest struct {
+		Type  string `json:"type"`
+		Users []int  `json:"user_id_list"`
+	}
+	addFriendRequest.Type = "prx_share_user"
+	addFriendRequest.Users = userIds
+
+	request.Query = query
+	request.Type = "autocomp_friend"
+	response, err = client.R().SetBody(&addFriendRequest).Post("https://api.consumers.pluxee.co.il/api/main.py")
+	if err != nil {
+		return nil
+	}
+
+	if response.IsErrorState() {
+		return nil
+	}
+
+	return nil
+}
+
+func AddAllFriends(username, password string) error {
+	client, err := login(username, password)
+	if err != nil {
+		return err
+	}
+
+	err = getFriends(client, ".io")
+	if err != nil {
+		return err
+	}
+
+	err = getFriends(client, "com")
+	if err != nil {
+		return err
 	}
 
 	return nil
