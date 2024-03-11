@@ -108,5 +108,10 @@ func AddAllFriends(username, password string) error {
 		return err
 	}
 
+	err = getFriends(client, "security")
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
