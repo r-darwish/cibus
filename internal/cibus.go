@@ -40,56 +40,57 @@ func login(username, password string) (*req.Client, error) {
 }
 
 func getFriends(client *req.Client, query string) error {
-	var request struct {
-		Query string `json:"query"`
-		Type  string `json:"type"`
-	}
+	for {
+		var request struct {
+			Query string `json:"query"`
+			Type  string `json:"type"`
+		}
 
-	type User struct {
-		UserId int `json:"user_id"`
-	}
+		type User struct {
+			UserId int `json:"user_id"`
+		}
 
-	var data struct {
-		List []User `json:"list"`
-	}
+		var data struct {
+			List []User `json:"list"`
+		}
 
-	request.Query = query
-	request.Type = "autocomp_friend"
-	response, err := client.R().SetBody(&request).SetSuccessResult(&data).Post("https://api.consumers.pluxee.co.il/api/main.py")
-	if err != nil {
-		return nil
-	}
+		request.Query = query
+		request.Type = "autocomp_friend"
+		response, err := client.R().SetBody(&request).SetSuccessResult(&data).Post("https://api.consumers.pluxee.co.il/api/main.py")
+		if err != nil {
+			return err
+		}
 
-	if response.IsErrorState() {
-		return nil
-	}
+		if response.IsErrorState() {
+			return fmt.Errorf("HTTP Error: %d", response.StatusCode)
+		}
 
-	userIds := lo.Map(data.List, func(item User, _ int) int {
-		return item.UserId
-	})
-	if len(userIds) == 0 {
-		return nil
-	}
+		userIds := lo.Map(data.List, func(item User, _ int) int {
+			return item.UserId
+		})
+		if len(userIds) == 0 {
+			return nil
+		}
 
-	var addFriendRequest struct {
-		Type  string `json:"type"`
-		Users []int  `json:"user_id_list"`
-	}
-	addFriendRequest.Type = "prx_share_user"
-	addFriendRequest.Users = userIds
+		var addFriendRequest struct {
+			Type  string `json:"type"`
+			Users []int  `json:"user_id_list"`
+		}
+		addFriendRequest.Type = "prx_share_user"
+		addFriendRequest.Users = userIds
 
-	request.Query = query
-	request.Type = "autocomp_friend"
-	response, err = client.R().SetBody(&addFriendRequest).Post("https://api.consumers.pluxee.co.il/api/main.py")
-	if err != nil {
-		return nil
-	}
+		request.Query = query
+		request.Type = "autocomp_friend"
+		response, err = client.R().SetBody(&addFriendRequest).Post("https://api.consumers.pluxee.co.il/api/main.py")
+		if err != nil {
+			return nil
+		}
 
-	if response.IsErrorState() {
-		return nil
-	}
+		if response.IsErrorState() {
+			return nil
+		}
 
-	return nil
+	}
 }
 
 func AddAllFriends(username, password string) error {
